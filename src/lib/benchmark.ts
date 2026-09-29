@@ -1,8 +1,8 @@
 // ============================================================
 // External benchmark: competitor promotions.
 //
-// Loaded from data/competitor_benchmark_dataset.csv (illustrative, anonymised market data —
-// deliberately separate from our own master dataset). This module compares OUR offer terms with
+// Read from the `Competitor` rows of the single data/serviceiq_master_dataset.csv (illustrative,
+// anonymised market data, kept apart from our own rows by record_type). This module compares OUR offer terms with
 // what competitors run, finds gaps, and turns them into actionable, quantified suggestions.
 // ============================================================
 
@@ -13,7 +13,7 @@ import { pctChange } from './format.ts';
 import { MODEL_HORIZON_WEEKS, runScheme, windowBaseline, windowEfficiency, PLAN_PERIODS } from './simulation.ts';
 import type { Dataset, Region, Scheme } from './types.ts';
 
-const FILE = 'competitor_benchmark_dataset.csv';
+const FILE = 'serviceiq_master_dataset.csv (record_type = Competitor)';
 
 export interface CompetitorOffer {
   month: string;
@@ -47,11 +47,12 @@ export function buildBenchmark(csv: string): Benchmark {
     if (r[k] === '' || !Number.isFinite(v)) throw new Error(`${FILE}: invalid number in "${k}": "${r[k]}"`);
     return v;
   };
-  const offers: CompetitorOffer[] = parseCsv(csv).map(r => {
+  // The competitor observations live in the same single CSV, tagged record_type = Competitor.
+  const offers: CompetitorOffer[] = parseCsv(csv).filter(r => r.record_type === 'Competitor').map(r => {
     if (!(REGIONS as string[]).includes(r.region)) throw new Error(`${FILE}: unknown region "${r.region}"`);
     if (!(SCHEMES as string[]).includes(r.our_equivalent_scheme)) throw new Error(`${FILE}: unknown scheme "${r.our_equivalent_scheme}"`);
     return {
-      month: r.observation_month,
+      month: r.month,
       competitorId: r.competitor_id,
       competitor: r.competitor_name,
       competitorType: r.competitor_type,

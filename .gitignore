@@ -25,3 +25,4 @@ dist-ssr
 # Reference material that must not be published (screenshots of another product) and template leftovers
 screenshot/
 .bolt/
+docs/

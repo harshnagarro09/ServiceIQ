@@ -79,8 +79,9 @@ A promotion that adds revenue but loses money (e.g. Free Engine Check) counts as
 ## 2. Architecture at a glance
 
 ```
-data/serviceiq_master_dataset.csv          ← OUR data: performance + campaigns (501 rows × 30 cols)
-data/competitor_benchmark_dataset.csv      ← EXTERNAL data: competitor offers (219 rows × 16 cols)
+data/serviceiq_master_dataset.csv          ← ONE CSV (720 rows × 44 cols), three record types:
+                                               Actual (480) + Plan (21) = OUR performance & campaigns
+                                               Competitor (219)         = EXTERNAL competitor offers
         │
 src/lib/buildDataset.ts, benchmark.ts      ← load, validate and type both files
         │
@@ -107,8 +108,8 @@ Key design decisions:
 | `npm run dev` | Start the app at http://localhost:5173 |
 | `npm run build` | Production build |
 | `npm run typecheck` / `npm run lint` | Code quality |
-| `npm run data:generate` | Recreate both CSVs (seeded → identical every time) |
-| `npm run check` | **96 automated checks** on data integrity, reconciliation, analytics, simulation, planner, monitor, benchmark, all 7 agents and 20 chat questions |
+| `npm run data:generate` | Recreate the single CSV (seeded → identical every time) |
+| `npm run check` | **98 automated checks** on data integrity, reconciliation, analytics, simulation, planner, monitor, benchmark, all 7 agents and 20 chat questions |
 
 ---
 
@@ -119,7 +120,7 @@ Key design decisions:
 
 **Granularity:** one row per **month × service center × customer segment**.
 - 12 months (Apr 2025 – Mar 2026 = FY 2025-26) × 10 centers × 4 segments = **480 `Actual` rows**
-- plus **21 `Plan` rows** (campaign months after March 2026: remaining months of active campaigns and the planned campaigns) → **501 rows**
+- plus **21 `Plan` rows** (campaign months after March 2026: remaining months of active campaigns and the planned campaigns) → **501 rows of our own data** (plus 219 competitor rows in the same file, §3.2 → **720 rows × 44 columns** in total)
 
 **Network:** North (Delhi, Jaipur) · South (Bengaluru, Hyderabad, Chennai) · East (Kolkata) · West (Mumbai, Pune) · Central (Nagpur, Indore).
 
@@ -169,16 +170,18 @@ Key design decisions:
 7. March price squeeze: South Premium ASV falls ~6.5%.
 8. East has no Bundle campaign and little competition.
 
-**Quality safeguards.** The loader throws on unknown regions/segments/schemes, on non-numeric values, and on a campaign whose attributes differ between rows. `npm run check` additionally verifies: exactly two CSVs in `/data`; 501 rows; plan rows carry no actuals; no duplicate month/center/segment rows; revenue − cost = gross profit on every row; incremental ≤ total; retained ≤ due; spend only where a campaign ran; campaign spend totals = Dashboard spend; region/segment slices sum to the network.
+**Quality safeguards.** The loader throws on unknown regions/segments/schemes, on non-numeric values, and on a campaign whose attributes differ between rows. `npm run check` additionally verifies: exactly ONE CSV in `/data`; 720 rows = 480 Actual + 21 Plan + 219 Competitor across 44 columns; plan rows carry no actuals; competitor rows carry no performance figures; each campaign's planned spend per month adds up to its investment; no duplicate month/center/segment rows; revenue − cost = gross profit on every row; incremental ≤ total; retained ≤ due; spend only where a campaign ran; campaign spend totals = Dashboard spend; region/segment slices sum to the network.
 
-### 3.2 External benchmark — `competitor_benchmark_dataset.csv`
+### 3.2 External benchmark — the `Competitor` rows of the same CSV
+*Stored in the same single file as `record_type = Competitor`; the loader reads our rows (`Actual`, `Plan`) into the dataset and the `Competitor` rows into the benchmark. Competitor rows leave the performance columns blank (and our rows leave the competitor columns blank), which is why the file is 44 columns wide.*
+
 *Illustrative and anonymised (Competitor A–E) — replace with real market intelligence in the same format.*
 
 **Granularity:** one row per **competitor × region × offer × month** → **219 rows** (A: 60, B: 60, C: 27, D: 27, E: 45), January–March 2026.
 
 | Column | Meaning |
 |---|---|
-| `observation_month` | when the offer was observed |
+| `month` | month the offer was observed (`YYYY-MM`) |
 | `competitor_id/name/type` | anonymised; types: national multi-brand chain (A), OEM-authorised network (B), app-based aggregator (C), express chain (D), independent garages (E) |
 | `region` | where observed (C only in North/South/West; D only South/West/Central) |
 | `mechanic` | the competitor's offer type (Percentage service discount, Fixed-value voucher, Free add-on, Free inspection, Service bundle) |
@@ -311,7 +314,7 @@ Region, center, segment, period and objective are stored in the shared **Plan**,
 | Tile | Definition |
 |---|---|
 | Total upcoming | recommended (not rejected) + already-scheduled campaigns |
-| Budget committed | scheduled campaigns' planned investment + cost of **accepted** recommendations |
+| Budget committed | spend **planned inside the selected period** on already-scheduled campaigns + the cost of campaigns you have **accepted**. Only the part of a scheduled campaign that falls in the period counts (not its whole investment), and the tile shows the split, e.g. "₹15.7L scheduled (5) + ₹0.0L accepted (0)". It is ₹0.0L, with an explanation, in periods where nothing is scheduled (Q2–Q4) until you accept campaigns. |
 | Needing action | flagged recommendations you have not yet decided |
 | Budget at risk | cost of those flagged, undecided campaigns |
 
@@ -343,7 +346,7 @@ Title and tags (*Competitor deeper by …pp*, *Modified*) · green offer line (t
 ### Demo flow
 1. Defaults: Q1, network, optimise net profit, budget ₹15L; baseline ₹1,359L, suggested target ₹1,427L.
 2. Read the tiles, then the table: point at *Purpose*, the *Competitor deeper by…pp* tags, predicted ROI, confidence.
-3. **Accept** two campaigns: *Budget committed* rises (e.g. ₹20.5L → ₹27.0L after one accept), progress bars move. **Undo**.
+3. **Accept** two campaigns: *Budget committed* rises (e.g. ₹15.7L → ₹22.2L after one accept), progress bars move. **Undo**.
 4. Set **Region = South**: list narrows to South's slices; targets re-suggest.
 5. Type `abc` in Revenue target → error → `1,500` → cleared.
 6. Change **Optimise for** → ranking changes.
@@ -403,67 +406,44 @@ Two cards: **AI Recommended** (the planner's original) and **Simulated** (your s
 
 **Question:** *Are live campaigns healthy? Did past ones deliver against plan? What did each teach us?*
 
+**Design idea:** the page shows **one topic at a time**. A short summary and three plain-language takeaways sit on top; four views underneath hold the detail, so nothing competes for attention.
+
 ### Layout
-Filters → **4 live KPI tiles** → **Active Campaign Monitor** → **Delivery Compliance + Health Score** → **Queued for Launch** → **4 portfolio tiles** → **ROI vs Plan** → **Performance Analytics (7 charts)** → **Campaign Portfolio** table → **Campaign Detail + Learning**.
+1. **Filter bar** — Region · Customer segment · Promotion scheme (they apply to everything below).
+2. **Summary strip** — five numbers: Live campaigns · Avg health · Need attention · Invested to date · Portfolio ROI.
+3. **Three takeaways** (computed, one sentence each): *Programme result* ("9 of 21 campaigns beat their plan; 1 lost money. Portfolio ROI is 1.38x against a 1.30x target"), *Scheme gap to plan* (best and worst scheme vs plan) and *Live campaigns* ("2 of 3 need attention, ₹3.3L at risk").
+4. **Four views** (tabs): **Live campaigns** · **Results** · **What we learned** · **All campaigns**.
 
-### Filters
-Region · Customer segment · Promotion scheme · Status. They apply to **everything below** — tiles, monitor, every chart and the table.
+### View 1 — Live campaigns (default)
+One **card per running campaign** (3 today):
+- name, region · segment · scheme, and a **health pill** (score + band: Healthy ≥75, Watch 55–74, Critical <55);
+- **delivery bar** — incremental revenue so far as % of the plan to date, with a marker at 100%, and the day counter;
+- **three mini numbers** — ROI (with the plan), extra visits (vs predicted), spend pace;
+- **plain-language advice** ("Delivery is 84% of plan — tighten targeting or extend outreach", "ROI is under plan — review the offer design", or "On track — no action needed") and, when it applies, "Competitors run deeper offers in West";
+- **View details →** opens that campaign in the *All campaigns* view.
 
-### Live KPI tiles
-Active campaigns (3) · Avg health score (76, "vs 82 when exactly on plan") · Campaigns at risk (health <75: 2) · Budget at risk (planned spend still to come on at-risk campaigns: ₹3.3L).
+Below the cards: **Queued for Launch** — campaigns you accepted on Planning (start date, budget, predicted ROI, confidence). Health formula: §5.5.
 
-### Active Campaign Monitor
-| Column | Meaning |
-|---|---|
-| Campaign / scheme | name, region · segment · scheme |
-| Day | elapsed days of the campaign (30 per month elapsed) of its total |
-| Delivery vs plan | incremental revenue so far ÷ expected to date, bar with a marker at 100%; below it, spend pace |
-| Extra visits vs predicted | incremental visits and % vs expected to date |
-| ROI (plan) | actual ROI to date and the planned ROI |
-| Health | 0–100 score with band (formula in §5.5) |
-| Flags | *Underperform* (delivery <90%), *Below ROI plan* (ROI <95% of plan), *Overspend* (pace >115%), *Underspend* (<70%), *Competitor* (competitors ≥3pp deeper on the equivalent offer in that region) |
+### View 2 — Results (plan vs actual)
+Four charts: **ROI vs Plan** (completed campaigns, planned vs actual), **How Campaigns Compare With Their Plan** (donut: *Beat plan* ≥105% of planned ROI, *On plan* ±5%, *Below plan*, *Lost money* <1.0x — currently 9 / 4 / 7 / 1 of 21), **Spend vs Incremental Revenue** (cumulative ₹59.1L → ₹212.3L) and **Spend and Return by Region** (West ₹18.5L → ₹70.1L, South ₹17.7L → ₹62.3L, East ₹4.0L → ₹14.2L).
 
-Current live campaigns: **Spring Refresh Promo** (East · Mid-Market) health 72 Watch, delivery 84%; **Highway Care Drive** (West · Value) 74 Watch, delivery 88%, Competitor flag; **Spring Bundle Push** (West · Mid-Market) 82 Healthy, delivery 101%, Competitor flag.
+### View 3 — What we learned
+Two charts and a short list. **Which Schemes Beat Their Plan** (spend-weighted planned vs actual ROI: Bundle 1.50 vs 1.37, Discount 1.48 vs 1.27, Car Wash 1.39 vs 1.30, **Voucher 1.15 vs 1.29**, **Engine Check 0.99 vs 1.20**) and **What the Offer Design Taught Us** (average ROI vs plan by design: priority slot +0.16, flat 10% +0.16, **60-day voucher −0.17**, **free check without repair credit −0.19 and −0.28**). Under them, **Lessons to Carry Into the Next Plan** turns those numbers into *Rethink* / *Repeat* sentences. This is the bridge from *Learn* back to *Plan*.
 
-### Delivery Compliance and Health Score
-- **Delivery Compliance:** one bar per live campaign — delivery % against the 100% marker, coloured green (≥100%), amber (≥90%), red (<90%).
-- **Health Score:** horizontal bars coloured by band, with a marker at the healthy threshold (75), and the formula stated under it.
-
-### Queued for Launch
-Campaigns you **accepted on Planning / applied in Simulation**: start date and length, budget, predicted ROI, predicted extra revenue, confidence, and whether it was modified. This closes the Plan → Execute loop.
-
-### Portfolio tiles
-Invested to date ₹59.1L · Incremental revenue ₹212.3L · Net profit ₹22.6L · Portfolio ROI 1.38x ("9 of 18 completed beat plan").
-
-### The nine charts (all filter-aware)
-
-| # | Chart | What it plots | How to read it | Current insight |
-|---|---|---|---|---|
-| 1 | **Health Score** | health per live campaign, marker at 75 | bars left of the marker need attention | two of three below 75 |
-| 2 | **ROI vs Plan — Completed** | planned vs actual ROI per completed campaign | actual taller than planned = beat plan | Winter Wash Bundle 1.57x vs 1.40x; Engine Health Check 0.92x vs 1.20x |
-| 3 | **Spend vs Incremental Revenue — Cumulative** | running totals by month | widening gap = value created | ₹59.1L spend → ₹212.3L revenue by March |
-| 4 | **Outcome Mix** | donut of campaigns that have run: *Beat plan* (ROI ≥105% of plan), *On plan* (±5%), *Below plan*, *Lost money* (ROI <1.0x) | more green/blue = healthier programme | of 21: **9 beat, 4 on plan, 7 below, 1 lost money** |
-| 5 | **Actual vs Planned ROI by Scheme** | spend-weighted planned vs actual ROI per scheme | blue below grey = scheme underdelivers | Discount 1.48 vs 1.27 · Bundle 1.50 vs 1.37 · Car Wash 1.39 vs 1.30 · **Voucher 1.15 vs 1.29** · **Engine Check 0.99 vs 1.20** |
-| 6 | **Plan Attainment per Campaign** | scatter: expected (x) vs actual (y) incremental revenue, coloured by scheme | above the diagonal beat their plan | hover a dot for the campaign |
-| 7 | **Net Profit by Campaign** | incremental gross profit − spend, ₹L | red bars lost money | top: Monsoon Service Camp +₹4.21L; bottom: Engine Health Check −₹0.11L |
-| 8 | **Spend and Return by Region** | spend vs incremental revenue per region | wide gap = productive spend | West ₹18.5L → ₹70.1L; South ₹17.7L → ₹62.3L; East ₹4.0L → ₹14.2L |
-| 9 | **What the Offer Design Taught Us** | average ROI-vs-plan by offer design note (n in brackets) | negative = designs that fell short | priority slot +0.16, flat 10% +0.16; **60-day voucher −0.17**, **free check without repair credit −0.19 and −0.28** |
-
-Chart 9 is the bridge from *Learn* back to *Plan*: it shows *which design choices* to change.
-
-### Portfolio table and detail
-Status tabs with counts; rows show spend vs plan, incremental revenue and ROI (green if at/above plan). Selecting a row opens:
-- **Completed / Active:** four Expected → Actual tiles (Active shows values *to date*, expected scaled to the part that has run), Expected vs Actual chart, Month-by-month chart.
-- **Planned:** plan tiles and a "no actuals yet" note.
-- **Campaign Learning** (generated): headline — *Did not recover its cost* (ROI <1.0x), *Below plan* (>5% under), *Ahead of plan* (>5% over), *On plan* — with points comparing to the scheme's other campaigns, budget use, the offer-design note and a recommendation. Also the target, offer design, **market position** (our depth vs the market median) and ROI-vs-plan.
+### View 4 — All campaigns
+Status pills (All · Planned · Active · Completed, with counts) and a five-column list (campaign, target, period, ROI vs plan, status). Selecting a row opens:
+- four **Actual vs plan** tiles (extra revenue, extra visits, net profit, ROI — for an active campaign the plan is scaled to the months that have run),
+- a **month-by-month** chart,
+- **What it taught us** — a generated learning (*Did not recover its cost* / *Below plan* / *Ahead of plan* / *On plan*) with comparisons to the scheme's other campaigns, budget use, a recommendation, the offer design and the **market position** (our depth vs the market median).
 
 ### Demo flow
-1. Tiles and monitor: point at health scores, flags and the **Competitor** flag.
-2. Health chart: "two of three campaigns are below the healthy line."
-3. Outcome Mix + Actual-vs-Planned-by-Scheme: "vouchers and engine checks are why we miss plan."
-4. Design chart: "60-day vouchers and no-credit checks are the design mistakes."
-5. Filter **Scheme = Free Engine Check** → every chart re-cuts to the three failing campaigns; open **Engine Health Check** for the learning text.
-6. Show **Queued for Launch** after accepting a campaign on Planning.
+1. Read the summary strip and the three takeaways aloud: the whole story in ten seconds.
+2. **Live campaigns:** point at the two Watch cards and their advice, then the Competitor note; open **Queued for Launch** after accepting a campaign on Planning.
+3. **Results:** "9 of 21 beat plan, 1 lost money" (donut), then ROI vs Plan.
+4. **What we learned:** "vouchers and engine checks are why we miss plan" (scheme chart), then the design chart and the *Rethink* lines.
+5. Filter **Scheme = Free Engine Check** — every view re-cuts to the three failing campaigns.
+6. **All campaigns → Completed →** *Engine Health Check* for the learning text.
+
 
 ---
 
@@ -472,9 +452,10 @@ Status tabs with counts; rows show spend vs plan, incremental revenue and ROI (g
 ### What it is
 An assistant that answers business questions in plain English, built as **one orchestrator and seven specialist agents**. **It is rule-based, not a large language model:** every number is calculated when you ask, from the same data as the other pages. That makes it instant, consistent with the dashboards, auditable, and unable to invent figures.
 
-### Two tabs
-- **AI Agents** — seven agent cards (Performance, Promotion, **Competitor Benchmark**, Simulation, **Campaign Planner**, **Campaign Monitor**, Recommendation; the last new ones are tagged *New*). Each card shows the agent's tagline, description, the data it uses, a **Run** button and **Ask in chat**. Pressing Run opens a full **report** below.
-- **Chat** — free-text questions plus 10 suggested questions; every answer is labelled *Orchestrator → X Agent*, states its scope ("Based on: …") and offers follow-up chips. The right panel highlights the agent that answered last.
+### Two modes — Chat is the default
+Two explainer cards at the top let users choose, and say when to use each:
+- **Chat** *(opens by default)* — "Ask in your own words". Type a question such as "Why did South revenue fall in March?" and get a short answer with the numbers. **Best for specific questions and follow-ups.** Free-text plus 10 suggested questions; every answer is labelled *Orchestrator → X Agent*, states its scope ("Based on: …") and offers follow-up chips. The right panel highlights the agent that answered last.
+- **AI Agents** — "Run a full report with one click". Seven specialists each produce a complete report (key numbers, a table and recommended actions) with no typing. **Best for reviews, or when you are not sure what to ask.** Seven agent cards (Performance, Promotion, **Competitor Benchmark**, Simulation, **Campaign Planner**, **Campaign Monitor**, Recommendation; the newest are tagged *New*), each with its tagline, description, data used, a **Run** button and **Ask in chat** (which switches to Chat and asks that agent's typical question).
 
 ### Anatomy of an agent report
 Every agent returns the same structure (`AgentReport`), which the UI renders and the chat converts into an answer:
@@ -690,7 +671,7 @@ Why did service revenue decline in March? · Which promotion performed best? · 
 ### 10-minute demo
 | Time | Page | Do | Say |
 |---|---|---|---|
-| 0:00–0:45 | — | Pitch | Problem, loop, synthetic data, two CSVs |
+| 0:00–0:45 | — | Pitch | Problem, loop, synthetic data, one CSV |
 | 0:45–2:45 | Dashboard | Defaults → South → Fleet → Opportunities | "Dip = promotions cooling; two leaks, two opportunities" |
 | 2:45–4:15 | AI Advisor → Agents | Competitor agent → gap table → action 2 | "We're behind the market on discount, mostly in the South" |
 | 4:15–6:00 | Planning | Calendar → Accept two → Modify a South row | "Specific campaigns with predicted ROI and confidence" |
@@ -699,7 +680,7 @@ Why did service revenue decline in March? · Which promotion performed best? · 
 | 9:00–10:00 | Chat | 3 questions | "Same data, plain English, seven agents" |
 
 ### 20-minute demo
-Add: dataset walkthrough (open both CSVs, the three sample rows and the depth worked example), every agent's *Run*, all nine campaign charts, the leakage assumption discussion, `npm run check` in a terminal (96 checks).
+Add: dataset walkthrough (open the single CSV, the three sample rows and the depth worked example), every agent's *Run*, all nine campaign charts, the leakage assumption discussion, `npm run check` in a terminal (98 checks).
 
 ### If something goes wrong
 - Blank page → refresh; ensure `npm run dev` is running.
@@ -727,7 +708,7 @@ Add: dataset walkthrough (open both CSVs, the three sample rows and the depth wo
 
 **Is the AI a language model?** No — deterministic, auditable, cannot invent numbers; an LLM can be layered on top for phrasing.
 
-**How do you test it?** `npm run check` runs 96 automated checks (data integrity and reconciliation, analytics, simulation, planner rules, monitor, benchmark, all seven agents, 20 chat questions). The interface was also exercised with a scripted click-through of all five pages.
+**How do you test it?** `npm run check` runs 98 automated checks (data integrity and reconciliation, analytics, simulation, planner rules, monitor, benchmark, all seven agents, 20 chat questions). The interface was also exercised with a scripted click-through of all five pages.
 
 **What's next?** Real data + attribution method; persistence and campaign creation; calibrate elasticities from pilots; roles/permissions; LLM phrasing layer.
 
@@ -760,8 +741,8 @@ Add: dataset walkthrough (open both CSVs, the three sample rows and the depth wo
 
 | Item | Value |
 |---|---|
-| Master dataset | 501 rows × 30 cols (480 Actual + 21 Plan) · 12 months × 10 centers × 4 segments |
-| Benchmark | 219 offers · 5 competitors · Jan–Mar 2026 |
+| The single CSV | 720 rows × 44 cols = 480 Actual + 21 Plan + 219 Competitor · our data: 12 months × 10 centers × 4 segments |
+| Competitor rows | 219 offers · 5 competitors · Jan–Mar 2026 |
 | Full-year revenue / visits / ASV | ₹5,816.7L / 84,180 / ₹6,910 |
 | Margin / retention | 38.7% / 88.4% |
 | Promotion spend → incremental revenue | ₹59.1L → ₹212.3L |
@@ -780,4 +761,4 @@ Add: dataset walkthrough (open both CSVs, the three sample rows and the depth wo
 | Live campaigns | 3 · avg health 76 · 2 at risk · ₹3.3L budget at risk |
 | Depth example (South · Mid-Market discount, ₹5L) | 10% → 15%: revenue ₹19.6L → ₹30.2L · cost ₹5.0L → ₹7.5L · net ₹2.5L → ₹4.1L |
 | Model constants | growth 6% · diminishing-returns exponent −0.12 · depth elasticity 0.5 · leakage 4%/pp (cap 40%) · ticket factor 0.95 · ROI target 1.30x |
-| Automated checks | 96 (`npm run check`) |
+| Automated checks | 98 (`npm run check`) |

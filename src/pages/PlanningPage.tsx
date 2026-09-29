@@ -7,7 +7,7 @@ import { centersIn, describeScope, metricsFor } from '@/lib/analytics';
 import { regionPressure, OUR_TERMS } from '@/lib/benchmark';
 import { REGIONS, ROI_TARGET, SCHEMES, SCHEME_COLORS, SEGMENTS } from '@/lib/constants';
 import { fmtInt, fmtL, fmtPct, fmtX, monthShort } from '@/lib/format';
-import { fmtDate, PURPOSES, recommendCampaigns, type Decision, type Decisions, type Purpose, type Rec } from '@/lib/planner';
+import { fmtDate, plannedSpendIn, PURPOSES, recommendCampaigns, type Decision, type Decisions, type Purpose, type Rec } from '@/lib/planner';
 import { OBJECTIVES, PLAN_PERIODS, planBaseline, planPeriod, planScope, suggestTargets, type Objective, type Plan, type PlanPeriodLabel } from '@/lib/simulation';
 import type { Region, Scheme, Segment } from '@/lib/types';
 import { AlertTriangle, Check, CheckCircle2, Flag, Pencil, Sparkles, Undo2, Wand2, X } from 'lucide-react';
@@ -72,7 +72,11 @@ export function PlanningPage({ plan, onPlanChange, decisions, onDecide, onOpenSi
   const live = bundle.recs.filter(r => statusOf(r) !== 'Rejected');
   const accepted = bundle.recs.filter(r => statusOf(r) === 'Accepted');
   const pendingAttention = bundle.recs.filter(r => r.needsAttention && !statusOf(r));
-  const committed = scheduled.reduce((s, c) => s + c.investment, 0) + accepted.reduce((s, r) => s + r.eval.scenario.promoCost, 0);
+  // Committed = spend already planned for THIS period on scheduled campaigns + the cost of campaigns you accepted.
+  // (Only the part of a scheduled campaign that falls inside the period counts, not its whole investment.)
+  const scheduledSpend = scheduled.reduce((s, c) => s + plannedSpendIn(c, bundle.periodMonths), 0);
+  const acceptedSpend = accepted.reduce((s, r) => s + r.eval.scenario.promoCost, 0);
+  const committed = scheduledSpend + acceptedSpend;
   const atRisk = pendingAttention.reduce((s, r) => s + r.eval.scenario.promoCost, 0);
 
   // ---------- plan progress
@@ -107,7 +111,13 @@ export function PlanningPage({ plan, onPlanChange, decisions, onDecide, onOpenSi
         {/* KPI tiles */}
         <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <StatTile label="Total upcoming" value={`${live.length + bundle.scheduled.length} campaigns`} sub={`${live.length} recommended · ${bundle.scheduled.length} already scheduled`} />
-          <StatTile label="Budget committed" value={fmtL(committed)} sub={`${accepted.length} accepted + ${bundle.scheduled.length} scheduled`} />
+          <StatTile
+            label="Budget committed"
+            value={fmtL(committed)}
+            sub={committed > 0
+              ? `${fmtL(scheduledSpend)} scheduled (${scheduled.length}) + ${fmtL(acceptedSpend)} accepted (${accepted.length})`
+              : 'Nothing is scheduled in this period yet — accept campaigns below to commit budget'}
+          />
           <StatTile label="Needing action" value={`${pendingAttention.length} campaigns`} tone={pendingAttention.length ? 'bad' : 'good'} sub="Flagged by the planner" />
           <StatTile label="Budget at risk" value={fmtL(atRisk)} tone={atRisk > 0 ? 'bad' : 'good'} sub="On flagged, undecided campaigns" />
         </div>
@@ -170,7 +180,7 @@ export function PlanningPage({ plan, onPlanChange, decisions, onDecide, onOpenSi
           {scheduled.length === 0 ? <p className="text-sm text-slate-400">No scheduled or active campaigns overlap this period in the selected scope.</p> : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[640px] text-sm">
-                <thead><tr className="border-b border-slate-100"><Th>Campaign</Th><Th>Scheme</Th><Th>Target</Th><Th>Window</Th><Th right>Budget</Th><Th right>Expected ROI</Th><Th right>Status</Th></tr></thead>
+                <thead><tr className="border-b border-slate-100"><Th>Campaign</Th><Th>Scheme</Th><Th>Target</Th><Th>Window</Th><Th right>Spend in this period</Th><Th right>Expected ROI</Th><Th right>Status</Th></tr></thead>
                 <tbody className="divide-y divide-slate-100">
                   {scheduled.map(c => (
                     <tr key={c.id}>
@@ -178,7 +188,7 @@ export function PlanningPage({ plan, onPlanChange, decisions, onDecide, onOpenSi
                       <td className="px-3 py-2.5 text-xs text-slate-600">{c.scheme}</td>
                       <td className="px-3 py-2.5 text-xs text-slate-600">{c.region} · {c.segment}</td>
                       <td className="whitespace-nowrap px-3 py-2.5 text-xs text-slate-600">{c.startMonth} → {c.endMonth}</td>
-                      <td className="px-3 py-2.5 text-right text-slate-700">{fmtL(c.investment)}</td>
+                      <td className="px-3 py-2.5 text-right text-slate-700">{fmtL(plannedSpendIn(c, bundle.periodMonths))} <span className="text-[10px] text-slate-400">of {fmtL(c.investment)}</span></td>
                       <td className="px-3 py-2.5 text-right text-slate-700">{fmtX(c.expectedRoi)}</td>
                       <td className="px-3 py-2.5 text-right"><Tag tone={c.status === 'Active' ? 'amber' : 'sky'}>{c.status}</Tag></td>
                     </tr>

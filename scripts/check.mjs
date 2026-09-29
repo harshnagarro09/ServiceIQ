@@ -16,8 +16,7 @@ import { AGENTS, runAgent } from '../src/lib/agents.ts';
 const MASTER = 'serviceiq_master_dataset.csv';
 const masterCsv = readFileSync(new URL(`../data/${MASTER}`, import.meta.url), 'utf8');
 const ds = buildDataset(masterCsv);
-const BENCH = 'competitor_benchmark_dataset.csv';
-const bm = buildBenchmark(readFileSync(new URL(`../data/${BENCH}`, import.meta.url), 'utf8'));
+const bm = buildBenchmark(masterCsv); // competitor observations live in the same single CSV
 
 let failures = 0;
 const check = (name, ok, detail = '') => {
@@ -28,11 +27,15 @@ const close = (a, b, tol = 0.02) => Math.abs(a - b) <= tol;
 
 console.log('\n# Master file');
 const csvFiles = readdirSync(new URL('../data/', import.meta.url)).filter(f => f.endsWith('.csv'));
-check('data folder = our master dataset + the external benchmark (no other CSVs)', csvFiles.length === 2 && csvFiles.includes(MASTER) && csvFiles.includes(BENCH), csvFiles.join(', '));
+check('exactly ONE CSV in /data (our records + competitor observations)', csvFiles.length === 1 && csvFiles[0] === MASTER, csvFiles.join(', '));
 const lines = masterCsv.replace(/^﻿/, '').trim().split('\n');
 const header = lines[0].split(',');
 const planLines = lines.slice(1).filter(l => l.startsWith('Plan,'));
-check('501 rows = 480 Actual + 21 Plan', lines.length - 1 === 501 && planLines.length === 21, `${lines.length - 1} rows`);
+const compLines = lines.slice(1).filter(l => l.startsWith('Competitor,'));
+check('720 rows = 480 Actual + 21 Plan + 219 Competitor, 44 columns', lines.length - 1 === 720 && planLines.length === 21 && compLines.length === 219 && header.length === 44, `${lines.length - 1} rows x ${header.length} cols`);
+check('Competitor rows carry no performance figures', compLines.every(l => Number(l.split(',')[header.indexOf('service_visits')] || 0) === 0));
+check('campaign planned spend per month adds up to the campaign investment',
+  ds.campaigns.every(c => Math.abs(Object.values(c.plannedByMonth).reduce((s, v) => s + v, 0) - c.investment) < 0.05));
 const zeroCols = ['service_visits', 'service_revenue_lakh', 'promo_spend_lakh', 'incremental_revenue_lakh'].map(c => header.indexOf(c));
 check('Plan rows carry no actuals', planLines.every(l => { const f = l.split(','); return zeroCols.every(i => Number(f[i]) === 0); }));
 check('10 service centers and 23 campaigns derived from the master file', ds.centers.length === 10 && ds.campaigns.length === 23);

@@ -20,9 +20,10 @@ function oneOf<T extends string>(value: string, allowed: readonly T[], what: str
 /**
  * Builds the in-memory dataset from the single master CSV.
  *
- * The file has one row per month x service center x customer segment:
- *  - record_type "Actual": measured performance (feeds every metric)
- *  - record_type "Plan":   campaign months that have not happened yet (plan values only)
+ * The single CSV holds three record types; this function uses the first two:
+ *  - "Actual":     one row per month x service center x customer segment (measured performance)
+ *  - "Plan":       campaign months that have not happened yet (plan values only)
+ *  - "Competitor": external competitor offers — ignored here, read by buildBenchmark()
  * Campaign attributes are repeated on each campaign row and plan amounts are allocated additively,
  * so campaign totals are simply sums over campaign_id.
  *
@@ -37,6 +38,7 @@ export function buildDataset(masterCsv: string): Dataset {
   const campaignMap = new Map<string, CampaignPlan>();
 
   for (const r of raw) {
+    if (r.record_type === 'Competitor') continue; // external market data lives in the same file
     const type = oneOf(r.record_type, ['Actual', 'Plan'] as const, 'record_type');
     const region = oneOf<Region>(r.region, REGIONS, 'region');
     const segment = oneOf<Segment>(r.segment, SEGMENTS, 'segment');
@@ -64,6 +66,7 @@ export function buildDataset(masterCsv: string): Dataset {
           endMonth: r.campaign_end,
           status: oneOf<CampaignStatus>(r.campaign_status, ['Planned', 'Active', 'Completed'], 'campaign_status'),
           investment: 0,
+          plannedByMonth: {},
           expectedRoi: num(r, 'expected_roi'),
           expectedIncrRevenue: 0,
           expectedIncrVisits: 0,
@@ -73,7 +76,9 @@ export function buildDataset(masterCsv: string): Dataset {
       } else if (c.scheme !== scheme || c.region !== region || c.segment !== segment || c.name !== r.campaign_name) {
         throw new Error(`${FILE}: campaign ${campaignId} has inconsistent attributes across rows`);
       }
-      c.investment += num(r, 'planned_promo_spend_lakh');
+      const planned = num(r, 'planned_promo_spend_lakh');
+      c.investment += planned;
+      c.plannedByMonth[r.month] = (c.plannedByMonth[r.month] ?? 0) + planned;
       c.expectedIncrRevenue += num(r, 'expected_incremental_revenue_lakh');
       c.expectedIncrVisits += num(r, 'expected_incremental_visits');
     }
@@ -106,6 +111,7 @@ export function buildDataset(masterCsv: string): Dataset {
     .map(c => ({
       ...c,
       investment: Math.round(c.investment * 100) / 100,
+      plannedByMonth: Object.fromEntries(Object.entries(c.plannedByMonth).map(([m, v]) => [m, Math.round(v * 1000) / 1000])),
       expectedIncrRevenue: Math.round(c.expectedIncrRevenue * 10) / 10,
       expectedIncrVisits: Math.round(c.expectedIncrVisits),
     }))

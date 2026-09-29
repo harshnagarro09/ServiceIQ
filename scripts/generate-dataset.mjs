@@ -1,7 +1,18 @@
 // ============================================================
 // ServiceIQ — synthetic dataset generator
 //
-// Produces ONE master CSV in /data (serviceiq_master_dataset.csv) — the single source of truth for`n// every page (dashboard, planning, simulation, campaign performance and the AI Advisor).`n//`n//   record_type = Actual : month x service center x customer segment performance (480 rows)`n//   record_type = Plan   : campaign months after the data window (plan values only, actuals = 0)`n//`n// Campaign attributes are repeated on every row of a campaign, and plan amounts are allocated`n// additively, so SUM over a campaign_id gives the campaign totals (actuals and plan).`n//`n// Deterministic (seeded) — re-running produces identical files.
+// Produces ONE CSV in /data (serviceiq_master_dataset.csv) — the single source of truth for every page
+// (dashboard, planning, simulation, campaign performance and the AI Advisor), holding three record types:
+//
+//   Actual     month x service center x customer segment performance (480 rows)
+//   Plan       campaign months after the data window: plan values only, actuals = 0 (21 rows)
+//   Competitor external market data: competitor offers by region and month (219 rows, illustrative)
+//
+// Campaign attributes are repeated on every row of a campaign, and plan amounts are allocated additively,
+// so SUM over a campaign_id gives the campaign totals (actuals and plan). Competitor rows leave the
+// performance columns blank, and vice versa.
+//
+// Deterministic (seeded) — re-running produces identical files.
 //   node scripts/generate-dataset.mjs
 // ============================================================
 
@@ -260,8 +271,7 @@ for (const camp of CAMPAIGNS) {
 }
 
 // ---------- write the single master CSV (UTF-8 with BOM so Excel shows ₹ correctly) ----
-function toCsv(rows) {
-  const cols = Object.keys(rows[0]);
+function toCsv(rows, cols = Object.keys(rows[0])) {
   const esc = v => {
     const s = String(v ?? '');
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -270,12 +280,12 @@ function toCsv(rows) {
 }
 
 mkdirSync(OUT, { recursive: true });
-writeIfChanged(new URL('serviceiq_master_dataset.csv', OUT), toCsv(master));
+// (the single CSV is written at the end of this script, after the competitor rows are generated)
 
 // ---------- console summary -----------------------------------
 const actual = master.filter(r => r.record_type === 'Actual');
 const sum = (rows, k) => rows.reduce((s, r) => s + r[k], 0);
-console.log(`serviceiq_master_dataset.csv  ${master.length} rows (${actual.length} actual + ${master.length - actual.length} plan) x ${Object.keys(master[0]).length} columns`);
+console.log(`Actual + Plan rows: ${master.length} (${actual.length} actual + ${master.length - actual.length} plan)`);
 console.log('\nmonth      revenue(L)  visits   ASV    margin  promo(L)  incrRev(L)  ROI');
 for (const m of MONTHS) {
   const rs = actual.filter(r => r.month === m);
@@ -290,7 +300,7 @@ for (const m of MONTHS) {
 
 // =====================================================================
 // External benchmark: competitor promotions (illustrative, anonymised)
-// Separate file on purpose — this is EXTERNAL market data, not our own.
+// Generated here but written into the SAME single CSV as record_type = Competitor.
 // =====================================================================
 const rand2 = mulberry32(777);
 const j2 = amp => 1 + (rand2() * 2 - 1) * amp;
@@ -341,7 +351,8 @@ BM_MONTHS.forEach((month, mi) => {
       depth = (value / TICKET) * 100;
     }
     benchmark.push({
-      observation_month: month,
+      record_type: 'Competitor',
+      month,
       competitor_id: comp.id, competitor_name: comp.name, competitor_type: comp.type,
       region, mechanic: o.mech, our_equivalent_scheme: o.scheme, offer_description: o.desc,
       discount_depth_pct: Math.round(depth * 10) / 10,
@@ -355,5 +366,13 @@ BM_MONTHS.forEach((month, mi) => {
     });
   }
 });
-writeIfChanged(new URL('competitor_benchmark_dataset.csv', OUT), toCsv(benchmark));
-console.log(`\ncompetitor_benchmark_dataset.csv  ${benchmark.length} rows (${COMPETITORS.length} competitors x ${BM_MONTHS.length} months)`);
+
+// ---------- ONE CSV: our records (Actual, Plan) + external competitor observations ----------
+const OUR_COLS = Object.keys(master[0]);
+const COMPETITOR_COLS = [
+  'competitor_id', 'competitor_name', 'competitor_type', 'mechanic', 'our_equivalent_scheme', 'offer_description',
+  'discount_depth_pct', 'offer_value_inr', 'validity_days', 'repair_credit_inr', 'channel', 'market_reach_pct', 'source_type', 'confidence',
+];
+const ALL_COLS = [...OUR_COLS, ...COMPETITOR_COLS];
+const wrote = writeIfChanged(new URL('serviceiq_master_dataset.csv', OUT), toCsv([...master, ...benchmark], ALL_COLS));
+console.log(`\nserviceiq_master_dataset.csv  ${master.length + benchmark.length} rows x ${ALL_COLS.length} columns  (${actual.length} Actual + ${master.length - actual.length} Plan + ${benchmark.length} Competitor)${wrote ? '' : '  [unchanged]'}`);

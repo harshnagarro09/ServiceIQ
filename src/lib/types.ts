@@ -46,7 +46,8 @@ export interface CampaignPlan {
   startMonth: string;
   endMonth: string;
   status: CampaignStatus;
-  investment: number;            // ₹ lakh planned
+  investment: number;            // ₹ lakh planned (whole campaign)
+  plannedByMonth: Record<string, number>; // ₹ lakh planned in each calendar month (YYYY-MM)
   expectedRoi: number;           // x
   expectedIncrRevenue: number;   // ₹ lakh
   expectedIncrVisits: number;

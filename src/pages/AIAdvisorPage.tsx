@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ComponentType } from 'react';
 import { Card, Badge, Button, PageWrapper, TopBar, type PageKey } from '@/components/Layout';
-import { FilterSelect, Pill, Th } from '@/components/ui';
+import { FilterSelect, Th } from '@/components/ui';
 import { benchmark as bm, dataset as ds } from '@/data/dataset';
 import { AGENTS, runAgent, type AgentDef, type AgentId, type AgentReport } from '@/lib/agents';
 import { answerQuestion, SUGGESTED_QUESTIONS, type AdvisorAnswer } from '@/lib/advisor';
@@ -10,7 +10,7 @@ import type { Decisions } from '@/lib/planner';
 import type { Plan } from '@/lib/simulation';
 import type { Region } from '@/lib/types';
 import {
-  Activity, Bot, CalendarClock, ChevronRight, Database, Eraser, Lightbulb, Play, Send, SlidersHorizontal, Sparkles, Swords, Tag, TrendingUp, User, Workflow, type LucideProps,
+  Activity, Bot, CalendarClock, ChevronRight, Database, Eraser, Lightbulb, MessageSquare, Play, Send, SlidersHorizontal, Sparkles, Swords, Tag, TrendingUp, User, Workflow, type LucideProps,
 } from 'lucide-react';
 
 type Message = { role: 'user'; text: string } | { role: 'assistant'; answer: AdvisorAnswer };
@@ -31,7 +31,7 @@ const WELCOME: AdvisorAnswer = {
 interface Props { plan: Plan; decisions: Decisions; onNavigate: (p: PageKey) => void }
 
 export function AIAdvisorPage({ plan, decisions, onNavigate }: Props) {
-  const [tab, setTab] = useState<Tab>('agents');
+  const [tab, setTab] = useState<Tab>('chat');
   const [activeId, setActiveId] = useState<AgentId>('competitor');
   const [region, setRegion] = useState<Region | 'All'>('All');
 
@@ -71,9 +71,17 @@ export function AIAdvisorPage({ plan, decisions, onNavigate }: Props) {
     <>
       <TopBar title="AI Advisor" subtitle="Seven specialist agents and a chat assistant — all working from the same data as the rest of the app" />
       <PageWrapper>
-        <div className="flex gap-2" role="tablist" aria-label="Advisor views">
-          <Pill active={tab === 'agents'} onClick={() => setTab('agents')}>AI Agents</Pill>
-          <Pill active={tab === 'chat'} onClick={() => setTab('chat')}>Chat</Pill>
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2" role="tablist" aria-label="Advisor views">
+          <ModeCard
+            active={tab === 'chat'} onClick={() => setTab('chat')} icon={MessageSquare}
+            title="Chat" tagline="Ask in your own words"
+            body="Type a question, for example “Why did South revenue fall in March?”, and get a short answer with the numbers. Best for specific questions and follow-ups."
+          />
+          <ModeCard
+            active={tab === 'agents'} onClick={() => setTab('agents')} icon={Bot}
+            title="AI Agents" tagline="Run a full report with one click"
+            body="Seven specialists each produce a complete report (key numbers, a table and recommended actions) without any typing. Best for reviews, or when you are not sure what to ask."
+          />
         </div>
 
         {tab === 'agents' ? (
@@ -142,6 +150,25 @@ export function AIAdvisorPage({ plan, decisions, onNavigate }: Props) {
         )}
       </PageWrapper>
     </>
+  );
+}
+
+/** Selectable card that explains what a mode is for, so users know when to use it. */
+function ModeCard({ active, onClick, icon: Icon, title, tagline, body }: { active: boolean; onClick: () => void; icon: ComponentType<LucideProps>; title: string; tagline: string; body: string }) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={`flex items-start gap-3 rounded-xl border p-4 text-left transition-colors ${active ? 'border-sky-500 bg-sky-50/60 ring-1 ring-sky-500/30' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+    >
+      <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${active ? 'bg-sky-500' : 'bg-slate-100'}`}><Icon className={`h-5 w-5 ${active ? 'text-white' : 'text-slate-500'}`} /></div>
+      <div className="min-w-0">
+        <div className="flex items-baseline gap-2"><span className="text-sm font-semibold text-slate-800">{title}</span><span className="text-xs font-medium text-sky-700">{tagline}</span></div>
+        <p className="mt-1 text-xs leading-relaxed text-slate-500">{body}</p>
+      </div>
+    </button>
   );
 }
 

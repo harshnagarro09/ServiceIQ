@@ -83,17 +83,17 @@ export function DashboardPage() {
           <>
             {/* Headline KPIs */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
-              <KpiCard tier="primary" label="Service Revenue" value={fmtL(cur.revenue)} delta={relDelta(cur.revenue, prev?.revenue)} context={ctx} spark={series.map(s => s.revenue)} hint="Total service revenue in the period" />
-              <KpiCard tier="primary" label="Gross Margin" value={fmtPct(cur.grossMargin)} delta={absDelta(cur.grossMargin, prev?.grossMargin, 'pp')} context={ctx} spark={series.map(s => s.grossMargin)} hint="Gross profit ÷ service revenue, before promotion spend" />
-              <KpiCard tier="primary" label="Promotion-driven Revenue" value={fmtL(cur.incrRevenue)} delta={relDelta(cur.incrRevenue, prev?.incrRevenue)} context={ctx} spark={series.map(s => s.incrRevenue)} hint="Incremental revenue attributed to promotion campaigns" />
-              <KpiCard tier="primary" label="Promotion ROI" value={fmtX(cur.roi)} delta={absDelta(cur.roi, prev?.roi, 'x', 2)} context={cur.roi === null ? 'no promotion spend' : `${ctx} · target ${fmtX(ROI_TARGET)}`} spark={series.map(s => s.roi ?? 0)} hint={ROI_DEFINITION} />
+              <KpiCard tier="primary" label="Service Revenue" value={fmtL(cur.revenue)} delta={relDelta(cur.revenue, prev?.revenue)} context={ctx} hint="Total service revenue in the period" />
+              <KpiCard tier="primary" label="Gross Margin" value={fmtPct(cur.grossMargin)} delta={absDelta(cur.grossMargin, prev?.grossMargin, 'pp')} context={ctx} hint="Gross profit ÷ service revenue, before promotion spend" />
+              <KpiCard tier="primary" label="Promotion-driven Revenue" value={fmtL(cur.incrRevenue)} delta={relDelta(cur.incrRevenue, prev?.incrRevenue)} context={ctx} hint="Incremental revenue attributed to promotion campaigns" />
+              <KpiCard tier="primary" label="Promotion ROI" value={fmtX(cur.roi)} delta={absDelta(cur.roi, prev?.roi, 'x', 2)} context={cur.roi === null ? 'no promotion spend' : `${ctx} · target ${fmtX(ROI_TARGET)}`} hint={ROI_DEFINITION} />
             </div>
             {/* Supporting KPIs */}
             <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-              <KpiCard tier="secondary" label="Service Visits" value={fmtInt(cur.visits)} delta={relDelta(cur.visits, prev?.visits)} context={ctx} spark={series.map(s => s.visits)} />
-              <KpiCard tier="secondary" label="Avg Service Value" value={fmtInr(cur.asv)} delta={relDelta(cur.asv, prev?.asv)} context={ctx} spark={series.map(s => s.asv)} hint="Service revenue ÷ visits" />
-              <KpiCard tier="secondary" label="Customer Retention" value={fmtPct(cur.retention)} delta={absDelta(cur.retention, prev?.retention, 'pp')} context={ctx} spark={series.map(s => s.retention)} hint="Customers who returned ÷ customers due for a repeat visit" />
-              <KpiCard tier="secondary" label="Promotion Spend" value={fmtL(cur.promoSpend)} delta={relDelta(cur.promoSpend, prev?.promoSpend, null)} context={ctx} spark={series.map(s => s.promoSpend)} />
+              <KpiCard tier="secondary" label="Service Visits" value={fmtInt(cur.visits)} delta={relDelta(cur.visits, prev?.visits)} context={ctx} />
+              <KpiCard tier="secondary" label="Avg Service Value" value={fmtInr(cur.asv)} delta={relDelta(cur.asv, prev?.asv)} context={ctx} hint="Service revenue ÷ visits" />
+              <KpiCard tier="secondary" label="Customer Retention" value={fmtPct(cur.retention)} delta={absDelta(cur.retention, prev?.retention, 'pp')} context={ctx} hint="Customers who returned ÷ customers due for a repeat visit" />
+              <KpiCard tier="secondary" label="Promotion Spend" value={fmtL(cur.promoSpend)} delta={relDelta(cur.promoSpend, prev?.promoSpend, null)} context={ctx} />
             </div>
 
             {/* Trends */}

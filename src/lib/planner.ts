@@ -76,6 +76,9 @@ export interface PlanBundle {
   gaps: CalendarGap[];
 }
 
+/** Planned spend of a scheduled campaign that falls inside the given months (₹ lakh). */
+export const plannedSpendIn = (c: CampaignPlan, months: string[]) => months.reduce((s, m) => s + (c.plannedByMonth[m] ?? 0), 0);
+
 // ------------------------------------------------------------
 // Dates
 // ------------------------------------------------------------
