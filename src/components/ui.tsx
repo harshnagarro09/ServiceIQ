@@ -1,7 +1,7 @@
 // Shared UI building blocks for the Planning, Simulation, Campaign Performance and AI Advisor pages.
 // (The Dashboard keeps using the components in Layout.tsx untouched.)
 
-import { useId, type ReactNode } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 
 // ---------- Filters ------------------------------------------------
 
@@ -100,6 +100,60 @@ export function ProgressBar({ value, max = 100, marker, tone = 'sky' }: { value:
       <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
       {marker !== undefined && <div className="absolute inset-y-[-3px] w-0.5 bg-slate-700/70" style={{ left: `${Math.min((marker / max) * 100, 100)}%` }} />}
     </div>
+  );
+}
+
+// ---------- Chart panel (one chart at a time) ------------------------
+
+export interface ChartOption {
+  key: string;
+  label: string;          // shown in the dropdown
+  subtitle?: string;      // explanation shown under the panel title for this chart
+  render: () => ReactNode; // only the selected option is rendered
+}
+
+interface ChartPanelProps {
+  title: string;
+  options: ChartOption[];
+  /** Controlled selection (optional). Without it the panel remembers the choice itself. */
+  selected?: string;
+  onSelect?: (key: string) => void;
+  className?: string;
+}
+
+/**
+ * Shows ONE chart at a time, chosen from a dropdown, so a page can offer several views
+ * without stacking them all on screen. Non-selected charts are never rendered.
+ */
+export function ChartPanel({ title, options, selected, onSelect, className = '' }: ChartPanelProps) {
+  const id = useId();
+  const [inner, setInner] = useState(options[0]?.key ?? '');
+  const key = selected ?? inner;
+  const current = options.find(o => o.key === key) ?? options[0];
+  if (!current) return null;
+  const choose = (k: string) => { setInner(k); onSelect?.(k); };
+  return (
+    <section className={`rounded-xl border border-slate-200 bg-white ${className}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 pb-3 pt-4">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-slate-700">{title}</h3>
+          {current.subtitle && <p className="mt-0.5 text-xs text-slate-400">{current.subtitle}</p>}
+        </div>
+        <div className="flex items-center gap-2">
+          <label htmlFor={id} className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Show</label>
+          <select
+            id={id}
+            value={current.key}
+            onChange={e => choose(e.target.value)}
+            aria-label={`${title}: choose chart`}
+            className="max-w-[16rem] rounded-lg border border-slate-200 bg-white py-1.5 pl-3 pr-8 text-sm text-slate-700 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+          >
+            {options.map(o => <option key={o.key} value={o.key}>{o.label}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="p-5">{current.render()}</div>
+    </section>
   );
 }
 

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Card, Button, PageWrapper, TopBar, EmptyState, type PageKey } from '@/components/Layout';
 import { GroupedBarChart, LineChart } from '@/components/Charts';
-import { FilterBar, FilterSelect, Pill, Slider, Tag, Th } from '@/components/ui';
+import { ChartPanel, FilterBar, FilterSelect, Pill, Slider, Tag, Th } from '@/components/ui';
 import { benchmark as bm, dataset as ds } from '@/data/dataset';
 import { centersIn } from '@/lib/analytics';
 import { marketPosition, OUR_TERMS } from '@/lib/benchmark';
@@ -114,6 +114,7 @@ function Workspace({ rec, aiRec, plan, decision, onDecide, onNavigate }: Workspa
   const [minRoi, setMinRoi] = useState(1.1);
   const [maxIntensity, setMaxIntensity] = useState(8);
   const [note, setNote] = useState<string | null>(null);
+  const [chart, setChart] = useState('schemes'); // which chart the panel shows; follows the lever you move
 
   const spec: RecSpec = { region: rec.region, segment: rec.segment, scheme, weeks, budget, depthPct: depth, startIdx };
   const sim = useMemo(() => evaluateSpec(ds, bm, spec), [scheme, budget, weeks, depth, rec.region, rec.segment, startIdx]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -124,7 +125,7 @@ function Workspace({ rec, aiRec, plan, decision, onDecide, onNavigate }: Workspa
   const mp = marketPosition(bm, scheme, rec.region);
   const marketDepth = mp?.medianDepth ?? null;
 
-  const changeScheme = (s: Scheme) => { setScheme(s); setDepth(OUR_TERMS[s].depthPct); setNote(null); };
+  const changeScheme = (s: Scheme) => { setScheme(s); setDepth(OUR_TERMS[s].depthPct); setNote(null); setChart('schemes'); };
   const reset = () => { setScheme(aiRec.scheme); setBudget(aiRec.budget); setWeeks(aiRec.weeks); setDepth(aiRec.depthPct); setNote(null); };
   const getAlternative = () => {
     const alt = findAlternative(ds, bm, spec, objective, guard);
@@ -134,21 +135,21 @@ function Workspace({ rec, aiRec, plan, decision, onDecide, onNavigate }: Workspa
       : `No option meets both guardrails for this campaign. Showing the highest-ROI option (${alt.spec.scheme}, ${fmtL(alt.spec.budget)}, ${alt.spec.depthPct}% depth: ${fmtX(alt.ev.scenario.roi)}). Relax a guardrail or change the scope.`);
   };
 
-  // ---- charts
-  const schemeChart = SCHEMES.map(s => {
-    const e = evaluateSpec(ds, bm, { ...spec, scheme: s, depthPct: OUR_TERMS[s].depthPct });
-    return { s, e };
-  });
-  const budgetCurve = [0.5, 0.75, 1, 1.25, 1.5, 2].map(m => {
+  // ---- charts: built lazily, only for the chart currently selected in the panel
+  const schemeChartData = () => SCHEMES.map(s => ({ s, e: evaluateSpec(ds, bm, { ...spec, scheme: s, depthPct: OUR_TERMS[s].depthPct }) }));
+  const budgetCurveData = () => [0.5, 0.75, 1, 1.25, 1.5, 2].map(m => {
     const e = evaluateSpec(ds, bm, { ...spec, budget: Math.max(0.5, Math.round(spec.budget * m * 2) / 2) });
     return { label: fmtL(e.scenario.promoCost), net: e.scenario.incrNetProfit, roi: e.scenario.roi };
   });
-  const depthMax = Math.ceil(Math.max(marketDepth ?? ref, ref) + 3);
-  const depthCurve: { label: string; net: number; roi: number | null }[] = [];
-  for (let d = Math.max(3, Math.floor(ref - 2)); d <= depthMax; d += 1) {
-    const e = evaluateSpec(ds, bm, { ...spec, depthPct: d });
-    depthCurve.push({ label: `${d}%`, net: e.scenario.incrNetProfit, roi: e.scenario.roi });
-  }
+  const depthCurveData = () => {
+    const out: { label: string; net: number; roi: number | null }[] = [];
+    const depthMax = Math.ceil(Math.max(marketDepth ?? ref, ref) + 3);
+    for (let d = Math.max(3, Math.floor(ref - 2)); d <= depthMax; d += 1) {
+      const e = evaluateSpec(ds, bm, { ...spec, depthPct: d });
+      out.push({ label: `${d}%`, net: e.scenario.incrNetProfit, roi: e.scenario.roi });
+    }
+    return out;
+  };
 
   const applied = decision?.status === 'Accepted';
   const competitors = bm.offers.filter(o => o.scheme === scheme && o.region === rec.region && o.month === bm.latestMonth).sort((a, b) => b.depthPct - a.depthPct);
@@ -188,9 +189,9 @@ function Workspace({ rec, aiRec, plan, decision, onDecide, onNavigate }: Workspa
             </div>
           </div>
           <div className="grid grid-cols-1 gap-x-8 gap-y-5 md:grid-cols-2 xl:grid-cols-3">
-            <Slider label="Offer depth (% of average ticket)" value={depth} min={3} max={25} step={0.5} format={v => `${v}%`} onChange={v => { setDepth(v); setNote(null); }} hint={marketDepth !== null ? `now ${ref}% · market ${marketDepth.toFixed(1)}%` : `now ${ref}%`} />
+            <Slider label="Offer depth (% of average ticket)" value={depth} min={3} max={25} step={0.5} format={v => `${v}%`} onChange={v => { setDepth(v); setNote(null); setChart('depth'); }} hint={marketDepth !== null ? `now ${ref}% · market ${marketDepth.toFixed(1)}%` : `now ${ref}%`} />
             <Slider label="Duration" value={weeks} min={2} max={12} step={1} format={v => `${v}w`} onChange={v => { setWeeks(v); setNote(null); }} />
-            <Slider label="Campaign budget (at current terms)" value={budget} min={0.5} max={Math.max(20, Math.ceil(aiRec.budget * 4))} step={0.5} format={v => fmtL(v)} onChange={v => { setBudget(v); setNote(null); }} hint="promotion cost scales with depth" />
+            <Slider label="Campaign budget (at current terms)" value={budget} min={0.5} max={Math.max(20, Math.ceil(aiRec.budget * 4))} step={0.5} format={v => fmtL(v)} onChange={v => { setBudget(v); setNote(null); setChart('budget'); }} hint="promotion cost scales with depth" />
             <Slider label="Min ROI guardrail" value={minRoi} min={0.8} max={1.8} step={0.05} format={v => `${v.toFixed(2)}x`} onChange={setMinRoi} />
             <Slider label="Max spend intensity (% of baseline revenue)" value={maxIntensity} min={1} max={15} step={0.5} format={v => `${v}%`} onChange={setMaxIntensity} />
             <div className="flex items-end"><Button variant="ghost" className="!px-2 !py-1 text-xs" onClick={reset}>Reset to AI recommendation</Button></div>
@@ -237,44 +238,75 @@ function Workspace({ rec, aiRec, plan, decision, onDecide, onNavigate }: Workspa
         )}
       </Card>
 
-      {/* Charts */}
-      <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-        <Card title="All Schemes for This Campaign" subtitle={`Same target, ${weeks}w, ${fmtL(budget)} budget · each scheme at its current offer terms`}>
-          <GroupedBarChart
-            categories={schemeChart.map(x => x.s)}
-            series={[
-              { label: 'Extra revenue', values: schemeChart.map(x => x.e.scenario.incrRevenue), color: '#0ea5e9' },
-              { label: 'Promotion cost', values: schemeChart.map(x => x.e.scenario.promoCost), color: '#94a3b8' },
-            ]}
-            height={250} valueFormat={v => v.toFixed(0)}
-          />
-          <p className="mt-2 text-xs text-slate-500">ROI: {schemeChart.map(x => `${x.s.split(' ').slice(0, 2).join(' ')} ${fmtX(x.e.scenario.roi)}`).join(' · ')}</p>
-        </Card>
-        <Card title="Budget Sensitivity" subtitle={`Net profit for ${scheme} as the budget changes`}>
-          <LineChart data={budgetCurve} xKey="label" series={[{ key: 'net', label: 'Net profit (₹L)', color: '#10b981' }]} showLegend={false} height={210} yFormat={v => fmtL(v, 1)} />
-          <p className="mt-2 text-xs text-slate-500">ROI: {budgetCurve.map(b => `${b.label} → ${fmtX(b.roi)}`).join(' · ')}</p>
-        </Card>
-        <Card title="Offer Depth Sensitivity" subtitle={`Net profit for ${scheme} at different discount depths${marketDepth !== null ? ` · market median ${marketDepth.toFixed(1)}%` : ''}`}>
-          <LineChart data={depthCurve} xKey="label" series={[{ key: 'net', label: 'Net profit (₹L)', color: '#8b5cf6' }]} showLegend={false} height={210} yFormat={v => fmtL(v, 1)} />
-          <p className="mt-2 text-xs text-slate-500">Deeper offers cost more but win back customers lost to competitors; profit peaks where the two effects balance. Current depth: {ref}%.</p>
-        </Card>
-        <Card title="Competitor Benchmark" subtitle={`${scheme} · ${rec.region} · ${bm.latestMonth}`}>
-          {competitors.length === 0 ? <p className="text-sm text-slate-400">No competitor runs an equivalent offer in {rec.region}.</p> : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[420px] text-xs">
-                <thead><tr className="border-b border-slate-100"><Th>Who</Th><Th>Offer</Th><Th right>Depth</Th><Th right>Validity</Th></tr></thead>
-                <tbody className="divide-y divide-slate-100">
-                  <tr className="bg-sky-50/60"><td className="px-3 py-2 font-semibold text-slate-800">Us</td><td className="px-3 py-2 text-slate-600">{OUR_TERMS[scheme].description}</td><td className="px-3 py-2 text-right font-semibold">{ref}%</td><td className="px-3 py-2 text-right">{OUR_TERMS[scheme].validityDays}d</td></tr>
-                  {competitors.map(c => (
-                    <tr key={c.competitorId}><td className="px-3 py-2 text-slate-700">{c.competitor}</td><td className="px-3 py-2 text-slate-600">{c.description}</td><td className={`px-3 py-2 text-right font-semibold ${c.depthPct > ref + 3 ? 'text-rose-600' : 'text-slate-700'}`}>{c.depthPct.toFixed(1)}%</td><td className="px-3 py-2 text-right">{c.validityDays}d</td></tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-          {mp && <p className="mt-3 text-xs text-slate-500">Market median {mp.medianDepth.toFixed(1)}% vs our {ref}% — <strong className={mp.position === 'Behind' ? 'text-rose-600' : 'text-slate-700'}>{mp.position.toLowerCase()}</strong> ({mp.gapPp >= 0 ? '' : '−'}{Math.abs(mp.gapPp).toFixed(1)}pp).</p>}
-        </Card>
-      </div>
+      {/* Analysis — one view at a time; it follows the slider you move */}
+      <ChartPanel
+        title="Scenario Analysis"
+        selected={chart}
+        onSelect={setChart}
+        options={[
+          {
+            key: 'schemes', label: 'Compare all schemes', subtitle: `Same target, ${weeks}w and ${fmtL(budget)} budget · each scheme at its current offer terms`,
+            render: () => {
+              const data = schemeChartData();
+              return (
+                <>
+                  <GroupedBarChart
+                    categories={data.map(x => x.s)}
+                    series={[
+                      { label: 'Extra revenue', values: data.map(x => x.e.scenario.incrRevenue), color: '#0ea5e9' },
+                      { label: 'Promotion cost', values: data.map(x => x.e.scenario.promoCost), color: '#94a3b8' },
+                    ]}
+                    height={250} valueFormat={v => v.toFixed(0)}
+                  />
+                  <p className="mt-2 text-xs text-slate-500">ROI: {data.map(x => `${x.s.split(' ').slice(0, 2).join(' ')} ${fmtX(x.e.scenario.roi)}`).join(' · ')}</p>
+                </>
+              );
+            },
+          },
+          {
+            key: 'budget', label: 'Budget sensitivity', subtitle: `Net profit for ${scheme} as the budget changes`,
+            render: () => {
+              const data = budgetCurveData();
+              return (
+                <>
+                  <LineChart data={data} xKey="label" series={[{ key: 'net', label: 'Net profit (₹L)', color: '#10b981' }]} showLegend={false} height={240} yFormat={v => fmtL(v, 1)} />
+                  <p className="mt-2 text-xs text-slate-500">ROI: {data.map(b => `${b.label} → ${fmtX(b.roi)}`).join(' · ')}</p>
+                </>
+              );
+            },
+          },
+          {
+            key: 'depth', label: 'Offer depth sensitivity', subtitle: `Net profit for ${scheme} at different discount depths${marketDepth !== null ? ` · market median ${marketDepth.toFixed(1)}%` : ''}`,
+            render: () => (
+              <>
+                <LineChart data={depthCurveData()} xKey="label" series={[{ key: 'net', label: 'Net profit (₹L)', color: '#8b5cf6' }]} showLegend={false} height={240} yFormat={v => fmtL(v, 1)} />
+                <p className="mt-2 text-xs text-slate-500">Deeper offers cost more but win back customers lost to competitors; profit peaks where the two effects balance. Current depth: {ref}%.</p>
+              </>
+            ),
+          },
+          {
+            key: 'market', label: 'Competitor benchmark', subtitle: `${scheme} · ${rec.region} · ${bm.latestMonth}`,
+            render: () => (
+              <>
+                {competitors.length === 0 ? <p className="text-sm text-slate-400">No competitor runs an equivalent offer in {rec.region}.</p> : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[420px] text-xs">
+                      <thead><tr className="border-b border-slate-100"><Th>Who</Th><Th>Offer</Th><Th right>Depth</Th><Th right>Validity</Th></tr></thead>
+                      <tbody className="divide-y divide-slate-100">
+                        <tr className="bg-sky-50/60"><td className="px-3 py-2 font-semibold text-slate-800">Us</td><td className="px-3 py-2 text-slate-600">{OUR_TERMS[scheme].description}</td><td className="px-3 py-2 text-right font-semibold">{ref}%</td><td className="px-3 py-2 text-right">{OUR_TERMS[scheme].validityDays}d</td></tr>
+                        {competitors.map(c => (
+                          <tr key={c.competitorId}><td className="px-3 py-2 text-slate-700">{c.competitor}</td><td className="px-3 py-2 text-slate-600">{c.description}</td><td className={`px-3 py-2 text-right font-semibold ${c.depthPct > ref + 3 ? 'text-rose-600' : 'text-slate-700'}`}>{c.depthPct.toFixed(1)}%</td><td className="px-3 py-2 text-right">{c.validityDays}d</td></tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {mp && <p className="mt-3 text-xs text-slate-500">Market median {mp.medianDepth.toFixed(1)}% vs our {ref}% — <strong className={mp.position === 'Behind' ? 'text-rose-600' : 'text-slate-700'}>{mp.position.toLowerCase()}</strong> ({mp.gapPp >= 0 ? '' : '−'}{Math.abs(mp.gapPp).toFixed(1)}pp).</p>}
+              </>
+            ),
+          },
+        ]}
+      />
     </div>
   );
 }

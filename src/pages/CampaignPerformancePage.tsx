@@ -1,7 +1,7 @@
 import { useMemo, useState, type ComponentType, type ReactNode } from 'react';
 import { Card, Badge, Button, EmptyState, PageWrapper, TopBar, type PageKey } from '@/components/Layout';
 import { BarChart, DonutChart, GroupedBarChart, LineChart } from '@/components/Charts';
-import { FilterBar, FilterSelect, ProgressBar, Tag, Th } from '@/components/ui';
+import { ChartPanel, FilterBar, FilterSelect, ProgressBar, Tag, Th } from '@/components/ui';
 import { benchmark as bm, dataset as ds } from '@/data/dataset';
 import { campaignResults, type CampaignResult } from '@/lib/analytics';
 import { marketPosition, OUR_TERMS } from '@/lib/benchmark';
@@ -187,21 +187,27 @@ export function CampaignPerformancePage({ plan, decisions, onNavigate }: Props) 
         {/* ---------- RESULTS ---------- */}
         {view === 'results' && (
           ran.length === 0 ? <EmptyState title="No campaigns have run in this selection" detail="Widen the region, segment or scheme filters." /> : (
-            <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-              <Card title="ROI vs Plan" subtitle="Completed campaigns · planned against actual ROI (campaign number on the axis)">
-                <BarChart data={completed.map(r => ({ label: r.plan.id.replace('CMP-', ''), actual: r.roi ?? 0, planned: r.plan.expectedRoi }))} xKey="label"
-                  series={[{ key: 'planned', label: 'Planned', color: '#cbd5e1' }, { key: 'actual', label: 'Actual', color: '#0ea5e9' }]} height={250} valueFormat={v => v.toFixed(2)} />
-              </Card>
-              <Card title="How Campaigns Compare With Their Plan" subtitle="±5% of planned ROI counts as on plan">
-                <DonutChart data={outcomeMix} centerValue={String(ran.length)} centerLabel="campaigns" height={190} />
-              </Card>
-              <Card title="Spend vs Incremental Revenue" subtitle="₹ lakh, running total by month">
-                <LineChart data={cumulative} xKey="label" series={[{ key: 'incr', label: 'Incremental revenue', color: '#10b981' }, { key: 'spend', label: 'Promotion spend', color: '#f59e0b' }]} height={230} yMin="zero" yFormat={v => fmtL(v, 0)} />
-              </Card>
-              <Card title="Spend and Return by Region" subtitle="₹ lakh · where promotion money went and what it brought back">
-                <GroupedBarChart categories={regionRows.map(r => r.label)} series={[{ label: 'Promotion spend', values: regionRows.map(r => r.spend), color: '#f59e0b' }, { label: 'Incremental revenue', values: regionRows.map(r => r.incr), color: '#0ea5e9' }]} height={230} valueFormat={v => v.toFixed(0)} />
-              </Card>
-            </div>
+            <ChartPanel
+              title="Results"
+              options={[
+                {
+                  key: 'roi', label: 'ROI vs plan', subtitle: 'Completed campaigns · planned against actual ROI (campaign number on the axis)',
+                  render: () => <BarChart data={completed.map(r => ({ label: r.plan.id.replace('CMP-', ''), actual: r.roi ?? 0, planned: r.plan.expectedRoi }))} xKey="label" series={[{ key: 'planned', label: 'Planned', color: '#cbd5e1' }, { key: 'actual', label: 'Actual', color: '#0ea5e9' }]} height={280} valueFormat={v => v.toFixed(2)} />,
+                },
+                {
+                  key: 'mix', label: 'How campaigns compare with plan', subtitle: '±5% of planned ROI counts as on plan',
+                  render: () => <DonutChart data={outcomeMix} centerValue={String(ran.length)} centerLabel="campaigns" height={210} />,
+                },
+                {
+                  key: 'cum', label: 'Spend vs incremental revenue', subtitle: '₹ lakh, running total by month',
+                  render: () => <LineChart data={cumulative} xKey="label" series={[{ key: 'incr', label: 'Incremental revenue', color: '#10b981' }, { key: 'spend', label: 'Promotion spend', color: '#f59e0b' }]} height={260} yMin="zero" yFormat={v => fmtL(v, 0)} />,
+                },
+                {
+                  key: 'region', label: 'Spend and return by region', subtitle: '₹ lakh · where promotion money went and what it brought back',
+                  render: () => <GroupedBarChart categories={regionRows.map(r => r.label)} series={[{ label: 'Promotion spend', values: regionRows.map(r => r.spend), color: '#f59e0b' }, { label: 'Incremental revenue', values: regionRows.map(r => r.incr), color: '#0ea5e9' }]} height={260} valueFormat={v => v.toFixed(0)} />,
+                },
+              ]}
+            />
           )
         )}
 
@@ -209,14 +215,19 @@ export function CampaignPerformancePage({ plan, decisions, onNavigate }: Props) 
         {view === 'learned' && (
           ran.length === 0 ? <EmptyState title="Nothing to learn from yet" detail="No campaigns have run in this selection." /> : (
             <div className="space-y-6">
-              <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
-                <Card title="Which Schemes Beat Their Plan" subtitle="Spend-weighted planned vs actual ROI">
-                  <BarChart data={schemeRoi} xKey="label" series={[{ key: 'planned', label: 'Planned', color: '#cbd5e1' }, { key: 'actual', label: 'Actual', color: '#0ea5e9' }]} height={250} valueFormat={v => v.toFixed(2)} />
-                </Card>
-                <Card title="What the Offer Design Taught Us" subtitle="Average ROI vs plan by offer design · negative = fell short (campaigns in brackets)">
-                  {designLearn.length ? <BarChart data={designLearn} xKey="label" series={[{ key: 'gap', label: 'ROI vs plan (x)', color: '#8b5cf6' }]} height={250} showLegend={false} valueFormat={v => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}`} /> : <EmptyState title="No completed campaigns" />}
-                </Card>
-              </div>
+              <ChartPanel
+                title="What the Results Tell Us"
+                options={[
+                  {
+                    key: 'schemes', label: 'Which schemes beat their plan', subtitle: 'Spend-weighted planned vs actual ROI',
+                    render: () => <BarChart data={schemeRoi} xKey="label" series={[{ key: 'planned', label: 'Planned', color: '#cbd5e1' }, { key: 'actual', label: 'Actual', color: '#0ea5e9' }]} height={270} valueFormat={v => v.toFixed(2)} />,
+                  },
+                  {
+                    key: 'design', label: 'What the offer design taught us', subtitle: 'Average ROI vs plan by offer design · negative = fell short (campaigns in brackets)',
+                    render: () => designLearn.length ? <BarChart data={designLearn} xKey="label" series={[{ key: 'gap', label: 'ROI vs plan (x)', color: '#8b5cf6' }]} height={270} showLegend={false} valueFormat={v => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}`} /> : <EmptyState title="No completed campaigns" />,
+                  },
+                ]}
+              />
               {designLearn.length > 0 && (
                 <Card title="Lessons to Carry Into the Next Plan">
                   <ul className="space-y-2.5 text-sm text-slate-700">

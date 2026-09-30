@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { Card, NumberField, Button, PageWrapper, TopBar, EmptyState, type PageKey } from '@/components/Layout';
 import { DonutChart, HBarChart, BarChart } from '@/components/Charts';
-import { FilterBar, FilterSelect, StatTile, Tag, ProgressBar, Th } from '@/components/ui';
+import { ChartPanel, FilterBar, FilterSelect, StatTile, Tag, ProgressBar, Th } from '@/components/ui';
 import { benchmark as bm, dataset as ds } from '@/data/dataset';
 import { centersIn, describeScope, metricsFor } from '@/lib/analytics';
 import { regionPressure, OUR_TERMS } from '@/lib/benchmark';
@@ -199,30 +199,41 @@ export function PlanningPage({ plan, onPlanChange, decisions, onDecide, onOpenSi
           )}
         </Card>
 
-        {/* Charts */}
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-          <Card title="Predicted ROI by Campaign" subtitle="Top 8 recommended · target marker at 1.30x" className="lg:col-span-2">
-            {roiBars.length ? <HBarChart data={roiBars} valueFormat={v => fmtX(v)} target={{ value: ROI_TARGET, label: `ROI target ${fmtX(ROI_TARGET)}` }} /> : <EmptyState title="No campaigns" />}
-          </Card>
-          <Card title="Budget by Scheme" subtitle="Recommended campaigns (excludes rejected)">
-            {bySchemeSpend.length ? <DonutChart data={bySchemeSpend} centerValue={fmtL(bySchemeSpend.reduce((s, d) => s + d.value, 0))} centerLabel="Total budget" height={190} /> : <EmptyState title="No budget allocated" />}
-          </Card>
-        </div>
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <Card title="Competitor Pressure by Region" subtitle="Average depth gap: market median minus our offer (pp) · positive = we are behind">
-            <BarChart data={pressure.map(p => ({ label: p.region, gap: Math.round(p.avgGapPp * 10) / 10 }))} xKey="label" series={[{ key: 'gap', label: 'Depth gap (pp)', color: '#f59e0b' }]} height={220} showLegend={false} valueFormat={v => `${v.toFixed(1)}pp`} />
-            <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
-              <span>Recommendations tagged “Competitor deeper” already account for this gap.</span>
-              <Button variant="secondary" className="!px-3 !py-1 text-xs" onClick={() => onNavigate('ai-advisor')}>Ask the Competitor Benchmark Agent</Button>
-            </div>
-          </Card>
-          <Card title="Historical Context" subtitle={`Same months last year (FY 2025-26) · ${describeScope(ds, planScope(plan))}`}>
-            <BarChart
-              data={planPeriod(plan).monthIdx.map(i => ({ month: monthShort(ds.months[i]), revenue: metricsFor(ds, planScope(plan), [ds.months[i]]).revenue }))}
-              xKey="month" series={[{ key: 'revenue', label: 'Service revenue (₹L)', color: '#10b981' }]} height={220} showLegend={false} valueFormat={v => v.toFixed(0)}
-            />
-          </Card>
-        </div>
+        {/* Charts — one at a time, chosen from the dropdown */}
+        <ChartPanel
+          title="Planning Insights"
+          options={[
+            {
+              key: 'roi', label: 'Predicted ROI by campaign', subtitle: 'Top 8 recommended · marker at the 1.30x ROI target',
+              render: () => roiBars.length ? <HBarChart data={roiBars} valueFormat={v => fmtX(v)} target={{ value: ROI_TARGET, label: `ROI target ${fmtX(ROI_TARGET)}` }} /> : <EmptyState title="No campaigns" />,
+            },
+            {
+              key: 'budget', label: 'Budget by scheme', subtitle: 'Where the recommended budget goes (rejected campaigns excluded)',
+              render: () => bySchemeSpend.length ? <DonutChart data={bySchemeSpend} centerValue={fmtL(bySchemeSpend.reduce((s, d) => s + d.value, 0))} centerLabel="Total budget" height={200} /> : <EmptyState title="No budget allocated" />,
+            },
+            {
+              key: 'pressure', label: 'Competitor pressure by region', subtitle: 'Average depth gap: market median minus our offer (pp) · positive = we are behind',
+              render: () => (
+                <>
+                  <BarChart data={pressure.map(p => ({ label: p.region, gap: Math.round(p.avgGapPp * 10) / 10 }))} xKey="label" series={[{ key: 'gap', label: 'Depth gap (pp)', color: '#f59e0b' }]} height={240} showLegend={false} valueFormat={v => `${v.toFixed(1)}pp`} />
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                    <span>Recommendations tagged “Competitor deeper” already account for this gap.</span>
+                    <Button variant="secondary" className="!px-3 !py-1 text-xs" onClick={() => onNavigate('ai-advisor')}>Ask the Competitor Benchmark Agent</Button>
+                  </div>
+                </>
+              ),
+            },
+            {
+              key: 'history', label: 'Historical context', subtitle: `Same months last year (FY 2025-26) · ${describeScope(ds, planScope(plan))}`,
+              render: () => (
+                <BarChart
+                  data={planPeriod(plan).monthIdx.map(i => ({ month: monthShort(ds.months[i]), revenue: metricsFor(ds, planScope(plan), [ds.months[i]]).revenue }))}
+                  xKey="month" series={[{ key: 'revenue', label: 'Service revenue (₹L)', color: '#10b981' }]} height={240} showLegend={false} valueFormat={v => v.toFixed(0)}
+                />
+              ),
+            },
+          ]}
+        />
 
         {/* Calendar gaps */}
         <Card title="Calendar Gaps Detected" subtitle="Unscheduled opportunities identified by the planner">
